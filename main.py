@@ -1,16 +1,7 @@
-# This is a sample Python script.
+import numpy as np
+from astropy.io import fits
+from codes import Computing_ys_in_annuli
 
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
-
-
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
-
-
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    print_hi('PyCharm')
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+hudl = fits.open('ICM_old/data/map2048_MILCA_Coma_20deg_G.fits')
+hudl.info()
+Computing_ys_in_annuli.get_2Dys_in_annuli(elliptical_model_vals)
