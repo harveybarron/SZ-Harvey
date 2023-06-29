@@ -12,7 +12,7 @@ data = hudl[1].data
 pixsize = 1.7177432059
 #cen_x, cen_y = np.unravel_index(data.argmax(), data.shape)
 
-rs, ys, step_size, maxval, ellipse = Functions.get_2Dys_in_annuli(data, [349.85768166,352.42445296,1,0])
+rs, ys, step_size, maxval, ellipse = Functions.get_2Dys_in_annuli(data, [349.85768166,352.42445296,1,0],1.7177432059)
 
 #rs, ys, step_size, maxval, ellipse = Functions.get_2Dys_in_annuli(data, [349,352,1,0])
 
@@ -47,14 +47,14 @@ y_fluc_norm = y_fluc / np.max(np.abs(blurred))
 
 
 #fluctuations plot
-# x_ticks = ['-2', '-1','0','1','2']
-# y_ticks = ['-2', '-1','0','1','2']
-# t11 = [0,35,70,105,138]
-# plt.figure()
-# #plt.xticks(ticks=t11, labels=x_ticks, size='small')
-# #plt.yticks(ticks=t11, labels=y_ticks, size='small')
-# norm = TwoSlopeNorm(vmin=y_fluc_norm[279:419,282:422].min(), vcenter=0, vmax=y_fluc_norm[279:419,282:422].max())
-# pc = plt.pcolormesh(y_fluc_norm[279:419,282:422], norm=norm, cmap="seismic")
-# plt.imshow(y_fluc_norm[279:419,282:422], cmap = 'seismic')
-# ax = plt.gca()
-# plt.show()
+x_ticks = ['-2', '-1','0','1','2']
+y_ticks = ['-2', '-1','0','1','2']
+t11 = [0,35,70,105,138]
+plt.figure()
+#plt.xticks(ticks=t11, labels=x_ticks, size='small')
+#plt.yticks(ticks=t11, labels=y_ticks, size='small')
+norm = TwoSlopeNorm(vmin=y_fluc_norm[279:419,282:422].min(), vcenter=0, vmax=y_fluc_norm[279:419,282:422].max())
+pc = plt.pcolormesh(y_fluc_norm[279:419,282:422], norm=norm, cmap="seismic")
+plt.imshow(y_fluc_norm[279:419,282:422], cmap = 'seismic')
+ax = plt.gca()
+plt.show()
