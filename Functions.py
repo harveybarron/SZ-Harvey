@@ -78,7 +78,7 @@ def get_fluctuations_ellipse(data, elliptical_model_vals, pixsize, NAXIS1, NAXIS
     if data_g.all() == 0:
         data_g = data
 
-    rs, ys, step_size, maxval, ellipse = get_2Dys_in_annuli(data, elliptical_model_vals, pixsize)
+    rs, ys, step_size, maxval, ellipse = get_2Dys_in_annuli(data_g, elliptical_model_vals, pixsize)
         
      #To account for the region between r=0 and r=(centre of first bin)
     ys_new = np.zeros(len(ys)+1)
@@ -112,7 +112,7 @@ def get_fluctuations_ellipse(data, elliptical_model_vals, pixsize, NAXIS1, NAXIS
                 r_ellipse_max = r_ellipse
 
             y_radius = np.interp(r_ellipse, rs_new, ys_new)
-            y_fluc[t1][t2] = data_g[rx][ry] - y_radius
+            y_fluc[t1][t2] = data[rx][ry] - y_radius
             y_fluc_norm[t1][t2] = y_fluc[t1][t2]/abs(y_radius)
             y_smooth[t1][t2] = y_radius
             
@@ -124,9 +124,9 @@ def get_fluctuations_gaussian(data, sigma,data_g=0):
     if data_g.all() == 0:
         data_g = data
 
-    blurred = skimage.filters.gaussian(data, sigma)
-    y_fluc = data_g-blurred
-    y_fluc_norm = y_fluc / np.abs(blurred)
+    blurred = skimage.filters.gaussian(data_g, sigma)
+    y_fluc = data-blurred
+    y_fluc_norm = y_fluc / blurred
     
     return y_fluc, y_fluc_norm, blurred
 
@@ -135,12 +135,12 @@ def get_fluctuations_nfw(data, datanfw, data_g=0):
     if data_g.all() == 0:
         data_g = data
 
-    y_fluc = data_g - datanfw
+    y_fluc = data - datanfw
     y_fluc_norm = y_fluc / np.abs(datanfw)
 
     return y_fluc, y_fluc_norm, datanfw
 
-def get_fluctuations_wavelet(data, scale, wavelet='db3',data_g=0,threshold=0.04):
+def get_fluctuations_waveletold(data, scale, wavelet='db3',data_g=0,threshold=0.04):
     import pysap
     if data_g.all() == 0:
         data_g = data
@@ -166,10 +166,65 @@ def get_fluctuations_wavelet(data, scale, wavelet='db3',data_g=0,threshold=0.04)
 
     rec_image = transform.synthesis()
     y_fluc = data-rec_image.data
-    y_fluc_norm = (data-rec_image.data)/np.abs(rec_image.data)
+    y_fluc_norm = (data-rec_image.data)/rec_image.data
     return y_fluc, y_fluc_norm, rec_image.data
 
-def get_fluctuations_waveletpacket(data, depth, wavelet='db3',data_g=0):
+def get_fluctuations_wavelet(data, level, wavelet='db3',data_g=0,threshold=0.04,thresholdmode='soft',plot=False,plotapprox=False,plotnorm=False,plotlog=False):
+    import pywt
+    if data_g.all() == 0:
+        data_g = data
+
+    if level > pywt.dwtn_max_level(np.shape(data), wavelet):
+        print("level greater than maxlevel")
+        level = pywt.dwtn_max_level(np.shape(data), wavelet)
+
+    coeffs = pywt.wavedec2(data=data_g, wavelet=wavelet, level=level, mode='symmetric')
+    coeffscopy = coeffs.copy()
+
+
+
+    for i, value in enumerate(coeffs):
+        if i != 0:
+            m = np.max(coeffs[i]) * threshold
+            print(i,m)
+            coeffs[i] = tuple([pywt.threshold(v, m, mode=thresholdmode, substitute=0) for v in coeffs[i]])
+            print(np.count_nonzero(coeffs[i])/np.size(coeffs[i]))
+
+    y_smooth = pywt.waverec2(coeffs, wavelet, mode='symmetric')
+    y_fluc = data-y_smooth
+    y_fluc_norm = y_fluc/y_smooth
+
+    if plot:
+        import cmasher as cmr
+        colors = cmr.take_cmap_colors('cmr.ocean', len(coeffscopy), cmap_range=(0.15, 0.85), return_fmt='hex')
+        plt.figure()
+        plt.xscale('log')
+        if plotlog:
+            plt.yscale('log')
+        colour = 0
+        for i, value in enumerate(coeffscopy):
+            if i != 0 or plotapprox:
+                m = np.max(coeffscopy[i]) * threshold
+                plt.axhline(y=m, color=colors[colour], linestyle='--')
+                flatcoeff = np.array([item for tup in coeffs[i] for item in tup]).flatten()
+                flatoldcoeff = np.array([item for tup in coeffscopy[i] for item in tup]).flatten()
+                if plotnorm:
+                    plt.plot(sorted(np.abs(flatcoeff / np.max(coeffscopy[i])), reverse=True),color=colors[colour], label="scale=" + str(i))
+                    plt.plot(sorted(np.abs(flatoldcoeff / np.max(coeffscopy[i])), reverse=True), color=colors[colour],linestyle=':')
+                else:
+                    plt.plot(sorted(np.abs(flatcoeff), reverse=True), color=colors[colour],label="scale=" + str(i))
+                    plt.plot(sorted(np.abs(flatoldcoeff), reverse=True), color=colors[colour], linestyle=':')
+            colour += 1
+        if plotnorm:
+            plt.ylabel("Normalised amplitude of coefficients")
+        else:
+            plt.ylabel("Amplitude of coefficients")
+        plt.legend()
+        plt.xlabel("Coefficients sorted by amplitude")
+        plt.savefig('waveletcoeff_' + str(wavelet) + '_' + str(level) + str(threshold) + str(thresholdmode) + '.png')
+    return y_fluc, y_fluc_norm, y_smooth
+
+def get_fluctuations_waveletpacketold(data, depth, wavelet='db3',data_g=0,threshold=0.04):
     import pywt
     if data_g.all() == 0:
         data_g = data
@@ -180,26 +235,140 @@ def get_fluctuations_waveletpacket(data, depth, wavelet='db3',data_g=0):
         print("depth greater than maxlevel")
         depth = wp.maxlevel
 
-    new_wp = pywt.WaveletPacket2D(data=None, wavelet=wavelet, mode='symmetric')
+    new_wp = pywt.WaveletPacket2D(data=np.zeros_like(data), wavelet=wavelet, mode='symmetric',maxlevel=depth)
 
-    for n in range(0,depth):
+    for n in range(0,depth+1):
         paths = [node.path for node in wp.get_level(n)]
+        leveldata = [node.data for node in wp.get_level(n)]
+        #levelthreshold = np.percentile(np.abs(leveldata),100*threshold)
+        levelthreshold = np.percentile(np.abs(leveldata), 100)*threshold
+        print("levelthreshold: ")
+        print(levelthreshold)
         for i,path in enumerate(paths):
-            print(path)
-            new_wp[path] = wp[path].data
-
-    endpaths = [node.path for node in wp.get_level(depth)]
-    for i,path in enumerate(endpaths):
-        if i == 0:
-            print(path)
-            new_wp[path] = wp[path].data
+            new_wp[path] = pywt.threshold(wp[path].data, levelthreshold, mode='soft', substitute=0)
+        leveldatanew = [node.data for node in new_wp.get_level(n)]
+        print(100*(1-np.count_nonzero(leveldatanew)/np.size(leveldatanew)))
 
     y_smooth = new_wp.reconstruct()
     y_fluc = data-y_smooth
     y_fluc_norm = y_fluc/y_smooth
     return y_fluc, y_fluc_norm, y_smooth
 
-def plot_wavelet_coeff(data, scale, wavelet='db3',data_g=0,threshold=0.04):
+def get_fluctuations_waveletpacket(data, depth, wavelet='db3',data_g=0,threshold=0.04,thresholdmode='soft',plot=False,plotapprox=False,plotnorm=False,plotlog=False):
+    import pywt
+    if data_g.all() == 0:
+        data_g = data
+
+    wp = pywt.WaveletPacket2D(data=data_g, wavelet=wavelet, mode='symmetric')
+    print(wp.maxlevel)
+    if depth > wp.maxlevel:
+        print("depth greater than maxlevel")
+        depth = wp.maxlevel
+
+    wp = pywt.WaveletPacket2D(data=data_g, wavelet=wavelet, mode='symmetric',maxlevel=depth)
+    new_wp = pywt.WaveletPacket2D(data=np.zeros_like(data), wavelet=wavelet, mode='symmetric',maxlevel=depth)
+
+    for n in range(0,depth):
+        paths = [node.path for node in wp.get_level(n)]
+        for i,path in enumerate(paths):
+            new_wp[path] = wp[path].data
+
+    paths = [n.path for n in wp.get_level(depth)]
+    leveldata = [n.data for n in wp.get_level(depth)]
+    print(np.shape(leveldata[1:]))
+    #levelthreshold = np.percentile(np.abs(leveldata[1:]),100*threshold)
+    levelthreshold = np.percentile(np.abs(leveldata[1:]), 100)*threshold
+    print("levelthreshold: ",levelthreshold)
+    for i,path in enumerate(paths):
+        if i == 0:
+            print(path)
+            new_wp[path] = wp[path].data
+        else:
+            new_wp[path] = pywt.threshold(wp[path].data, levelthreshold, mode=thresholdmode, substitute=0)
+    leveldatanew = [node.data for node in new_wp.get_level(depth)]
+    print(100*(1-(np.count_nonzero(leveldatanew)/np.size(leveldatanew))))
+
+    if plot:
+        plt.figure()
+        plt.xscale('log')
+        if plotlog:
+            plt.yscale('log')
+        cmap = plt.get_cmap('tab10')
+        colour = 0
+
+        plt.axhline(y=levelthreshold, color='black', linestyle='--')
+        flatcoeff = np.array(leveldatanew[1:]).flatten()
+        flatoldcoeff = np.array(leveldata[1:]).flatten()
+
+        plt.plot(sorted(np.abs(flatcoeff), reverse=True), color='black')
+        plt.plot(sorted(np.abs(flatoldcoeff), reverse=True), color='black', linestyle=':')
+
+        plt.ylabel("Amplitude of coefficients")
+        plt.xlabel("Coefficients sorted by amplitude")
+
+        plt.savefig('waveletpacketcoeff_' + str(wavelet) + '_' + str(depth) + str(threshold) + str(thresholdmode) + '.png')
+
+    y_smooth = new_wp.reconstruct(update=True)
+    y_fluc = data-y_smooth
+    y_fluc_norm = y_fluc/y_smooth
+    return y_fluc, y_fluc_norm, y_smooth
+
+def get_fluctuations_wavelet_undec(data, scales, wavelet='BsplineWaveletTransformATrousAlgorithm', data_g=0, smoothlvl=1, noiselvl=0):
+    import pysap
+    if data_g.all() == 0:
+        data_g = data
+    transform_klass = pysap.load_transform(wavelet)
+    transform = transform_klass(nb_scale=scales, verbose=1, padding_mode="symmetric")
+    transform.data = data_g
+    transform.analysis()
+    # if smoothlvl == 1:
+    #     smooth = transform.analysis_data[-smoothlvl]
+    # else:
+    smooth = np.sum(transform.analysis_data[-smoothlvl:],axis=0)
+    print(np.shape(data))
+    print(np.shape(smooth))
+    y_fluc = data-smooth
+    print(np.shape(y_fluc))
+    if noiselvl != 0:
+        transform1 = transform_klass(nb_scale=scales, verbose=1, padding_mode="symmetric")
+        transform1.data = data
+        transform1.analysis()
+        # if noiselvl == 1:
+        #     noise = transform.analysis_data[:noiselvl]
+        # else:
+        noise = np.sum(transform.analysis_data[:noiselvl],axis=0)
+        y_fluc = y_fluc-noise
+    y_fluc_norm = y_fluc/smooth
+
+    return y_fluc, y_fluc_norm, smooth
+
+def get_fluctuations_wavelet_undec_radial(data, scales, elliptical_model_vals, pixsize, NAXIS1, NAXIS2, image_length, wavelet='BsplineWaveletTransformATrousAlgorithm', data_g=0, smoothlvl=1, noiselvl=0):
+    import pysap
+    if data_g.all() == 0:
+        data_g = data
+    transform_klass = pysap.load_transform(wavelet)
+    transform = transform_klass(nb_scale=scales, verbose=1, padding_mode="symmetric")
+    transform.data = data_g
+    transform.analysis()
+    smoothscale = []
+    print(np.shape(transform.analysis_data))
+    for n in range(scales-smoothlvl,scales):
+        print(n)
+        smoothscale.append(get_fluctuations_ellipse(np.pad(transform.analysis_data[n],280), elliptical_model_vals, pixsize, NAXIS1, NAXIS2, image_length, data_g=np.pad(transform.analysis_data[n],280))[2])
+    smooth = np.sum(smoothscale,axis=0)
+    y_fluc = data-smooth
+
+    if noiselvl != 0:
+        transform1 = transform_klass(nb_scale=scales, verbose=1, padding_mode="symmetric")
+        transform1.data = data
+        transform1.analysis()
+        noise = np.sum(transform.analysis_data[:noiselvl],axis=0)
+        y_fluc = y_fluc-noise
+    y_fluc_norm = y_fluc/smooth
+
+    return y_fluc, y_fluc_norm, smooth
+
+def plot_wavelet_undec(data, scale, wavelet='BsplineWaveletTransformATrousAlgorithm',data_g=0):
     import pysap
     if data_g.all() == 0:
         data_g = data
@@ -207,9 +376,43 @@ def plot_wavelet_coeff(data, scale, wavelet='db3',data_g=0,threshold=0.04):
     transform = transform_klass(nb_scale=scale, verbose=1, padding_mode="symmetric")
     transform.data = data_g
     transform.analysis()
+    print(scale)
+    if scale % 2 == 0:
+        fig, axs = plt.subplots(2, int(scale/2))
+        print("even")
+        cut = int(scale/2)
+    else:
+        fig, axs = plt.subplots(2, int((scale+1) / 2))
+        print("odd")
+        cut = int((scale+1) / 2)
+    for n in range(0,cut*2):
+        if n < cut:
+            axs[0,n].imshow(transform.analysis_data[n])
+            axs[0,n].get_yaxis().set_visible(False)
+            axs[0,n].get_xaxis().set_visible(False)
+        else:
+            if n < scale:
+                axs[1,int(n-cut)].imshow(transform.analysis_data[n])
+            axs[1,int(n-cut)].get_yaxis().set_visible(False)
+            axs[1,int(n-cut)].get_xaxis().set_visible(False)
+
+    plt.savefig('waveletundec_decomp_'+str(wavelet)+'_'+str(scale)+'.png')
+    return transform.analysis_data
+
+def plot_wavelet_coeff(data, scale, wavelet='db3',data_g=0,threshold=0.04,log=True):
+    import pysap
+    if data_g.all() == 0:
+        data_g = data
+    import cmasher as cmr
+    transform_klass = pysap.load_transform(wavelet)
+    transform = transform_klass(nb_scale=scale, verbose=1, padding_mode="symmetric")
+    transform.data = data_g
+    transform.analysis()
     plt.figure()
     plt.xscale('log')
-    cmap = plt.get_cmap('tab10')
+    if log:
+        plt.yscale('log')
+    colors = cmr.take_cmap_colors('cmr.ocean', scale*3, cmap_range=(0.15, 0.85), return_fmt='hex')
     colour = 0
     for n in range(0,scale*3+1):
         if n == 0:
@@ -222,13 +425,13 @@ def plot_wavelet_coeff(data, scale, wavelet='db3',data_g=0,threshold=0.04):
             if n % 3 == 0:
                 m = np.max((np.max(abs(transform.analysis_data[n])), np.max(abs(transform.analysis_data[n - 1])),np.max(abs(transform.analysis_data[n - 2])))) * threshold
 
-        plt.axhline(y=m, color=cmap(colour), linestyle='--')
-        plt.plot(sorted(abs(transform.analysis_data[n].flatten()),reverse=True), color=cmap(colour),label="scale="+str(n))
+        plt.axhline(y=m, color=colors[colour], linestyle='--')
+        plt.plot(sorted(abs(transform.analysis_data[n].flatten()),reverse=True), color=colors[colour],label="scale="+str(n))
         colour += 1
-    plt.ylabel("Amplitude of coeff")
+    plt.ylabel("Amplitude of coefficients")
+    plt.xlabel("Coefficients, sorted by amplitude")
     plt.legend()
-    plt.title("Wavelet coefficients")
-    plt.savefig('waveletcoeff_'+str(wavelet)+'_'+str(scale)+str(threshold)+'.png')
+    plt.savefig('waveletcoeff_'+str(wavelet)+'_'+str(scale)+str(threshold)+'final.png')
     return transform.analysis_data
 
 def beam(l,source='Planck'):
@@ -321,7 +524,7 @@ def namaster_spectrum_khatri(norm_y_fluc, bin_number, minscale, maxscale, arcmin
 
     Lx = 4. * np.pi / 180
     Ly = 4. * np.pi / 180
-    Nx, Ny = len(norm_y_fluc), len(norm_y_fluc)
+    Nx, Ny = np.shape(norm_y_fluc) #len(norm_y_fluc), len(norm_y_fluc)
     mask = np.zeros((Nx, Ny))
     # the centre will always be the middle elements becuase of the way the fluctuation maps have been computed
     cen_x, cen_y = Nx / 2., Ny / 2.
@@ -378,6 +581,8 @@ def namaster_spectrum_khatri(norm_y_fluc, bin_number, minscale, maxscale, arcmin
 
     print(l0_bins_klow)
     print(lf_bins_klow)
+    print(l0_bins)
+    print(lf_bins)
     bklow = nmt.NmtBinFlat(l0_bins_klow, lf_bins_klow)
     ells_uncoupled_bklow = bklow.get_effective_ells()
     print(ells_uncoupled_bklow)

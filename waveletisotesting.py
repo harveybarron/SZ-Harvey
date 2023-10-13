@@ -34,4 +34,66 @@ def plot_wavelet_undec(data, scale, wavelet='BsplineWaveletTransformATrousAlgori
     plt.savefig('waveletundec_decomp_'+str(wavelet)+'_'+str(scale)+'.png')
     return transform.analysis_data
 
-plot_wavelet_undec(data1[279:419, 282:422], 6, wavelet='db3',data_g=data[279:419, 282:422])
+def get_fluctuations_wavelet_undec(data, scales, wavelet='BsplineWaveletTransformATrousAlgorithm', data_g=0, smoothlvl=1, noiselvl=0):
+    import pysap
+    if data_g.all() == 0:
+        data_g = data
+    transform_klass = pysap.load_transform(wavelet)
+    transform = transform_klass(nb_scale=scales, verbose=1, padding_mode="symmetric")
+    transform.data = data_g
+    transform.analysis()
+    # if smoothlvl == 1:
+    #     smooth = transform.analysis_data[-smoothlvl]
+    # else:
+    smooth = np.sum(transform.analysis_data[-smoothlvl:],axis=0)
+    print(np.shape(data))
+    print(np.shape(smooth))
+    y_fluc = data-smooth
+    print(np.shape(y_fluc))
+    if noiselvl != 0:
+        transform1 = transform_klass(nb_scale=scales, verbose=1, padding_mode="symmetric")
+        transform1.data = data
+        transform1.analysis()
+        # if noiselvl == 1:
+        #     noise = transform.analysis_data[:noiselvl]
+        # else:
+        noise = np.sum(transform.analysis_data[:noiselvl],axis=0)
+        y_fluc = y_fluc-noise
+    y_fluc_norm = y_fluc/np.abs(smooth)
+
+    return y_fluc, y_fluc_norm, smooth
+
+
+y_fluc,y_fluc_norm,smooth = get_fluctuations_wavelet_undec(data1[279:419, 282:422], 6, wavelet='BsplineWaveletTransformATrousAlgorithm',data_g=data[279:419, 282:422],smoothlvl=2, noiselvl=1)
+print(y_fluc.min())
+print(y_fluc.max())
+print(np.shape(y_fluc))
+x_ticks = ['-2', '-1','0','1','2']
+y_ticks = ['-2', '-1','0','1','2']
+t11 = [0,35,70,105,138]
+plt.figure()
+norm = Functions.TwoSlopeNorm(vmin=y_fluc.min(), vcenter=0, vmax=y_fluc.max())
+pc = plt.pcolormesh(y_fluc, norm=norm, cmap="seismic")
+plt.imshow(y_fluc, cmap = 'seismic')
+ax = plt.gca()
+plt.savefig("y_fluc_first_bspline_6_2_1.png")
+plt.close()
+
+
+x_ticks = ['-2', '-1','0','1','2']
+y_ticks = ['-2', '-1','0','1','2']
+t11 = [0,35,70,105,138]
+plt.figure()
+norm = Functions.TwoSlopeNorm(vmin=-1.5, vcenter=0, vmax=1.5)
+pc = plt.pcolormesh(y_fluc_norm, norm=norm, cmap="seismic")
+plt.imshow(y_fluc_norm, cmap = 'seismic')
+ax = plt.gca()
+plt.savefig("y_fluc_norm_first_bspline_6_2_1.png")
+plt.close()
+
+
+plt.figure()
+plt.imshow(smooth)
+plt.savefig("y_smooth_bspline_6_2_1.png")
+plt.close()
+# plot_wavelet_undec(data1[279:419, 282:422], 6, wavelet='db3',data_g=data[279:419, 282:422])
